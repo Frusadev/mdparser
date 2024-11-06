@@ -5,6 +5,7 @@
  *             italic         |
  *             code           |
  *             multiline_code |
+ *             formatStmt     |
  * text:   TEXT        ?EOF
  * bold:   STAR       innerBoldStmt STAR
  * innerBoldStmt: italic | text
@@ -124,9 +125,11 @@ class Lexer {
 		if (this.peek() === "`" && this.peek(2) === "`") {
 			token.tokenValue = "```";
 			token.tokenType = TokenType.CODE;
+			this.advance(3);
 		} else {
 			token.tokenValue = "`";
 			token.tokenType = TokenType.MONOSPACE;
+			this.advance();
 		}
 		return token;
 	}
@@ -152,8 +155,8 @@ class Lexer {
 					token.tokenType = TokenType.BOLD;
 					this.advance(2);
 				} else {
-          this.invalidCharacterError()
-        }
+					this.invalidCharacterError();
+				}
 				break;
 			case "-":
 				if (this.peek() === "-" && this.peek(2) === "-") {
@@ -180,4 +183,204 @@ class Lexer {
 	}
 }
 
-const lexer = new Lexer("_**Hello** World_");
+enum NodeType {
+	RootNode,
+	StringNode,
+	Bold,
+	Italic,
+	Code,
+	Monospace,
+	Header1,
+	Header2,
+	Header3,
+	Header4,
+	Header5,
+	Void,
+}
+
+type ASTNode = {
+	nodeType: NodeType;
+	token: Token;
+	children: Array<ASTNode>;
+};
+
+class Parser {
+	private currentToken: Token;
+	private lexer: Lexer;
+
+	constructor(lexer: Lexer) {
+		this.lexer = lexer;
+		this.currentToken = this.lexer.getNextToken();
+	}
+
+	private invalidTokenError() {
+		throw `Invalid token: ${JSON.stringify(this.currentToken)}`;
+	}
+
+	private eat(tokenType: TokenType) {
+		if (this.currentToken.tokenType === tokenType) {
+			this.currentToken = this.lexer.getNextToken();
+		} else {
+			this.invalidTokenError();
+		}
+	}
+
+	private textStmt(): ASTNode {
+		const text: ASTNode = {
+			nodeType: NodeType.StringNode,
+			token: this.currentToken,
+			children: [],
+		};
+		this.eat(TokenType.STRING);
+		return text;
+	}
+
+	private boldStmt(): ASTNode {
+		const node: ASTNode = {
+			nodeType: NodeType.Bold,
+			token: this.currentToken,
+			children: [],
+		};
+		this.eat(TokenType.BOLD);
+		node.children = [...this.innerBoldStmt()];
+		this.eat(TokenType.BOLD);
+		return node;
+	}
+
+	private italicStmt(): ASTNode {
+		const node: ASTNode = {
+			nodeType: NodeType.Italic,
+			token: this.currentToken,
+			children: [],
+		};
+		this.eat(TokenType.ITALIC);
+		node.children = [...this.innerItalicStmt()];
+		this.eat(TokenType.ITALIC);
+		return node;
+	}
+
+	private innerItalicStmt(): Array<ASTNode> {
+		let nodes: Array<ASTNode> = [];
+		while (this.currentToken.tokenType in [TokenType.BOLD, TokenType.STRING]) {
+			switch (this.currentToken.tokenType) {
+				case TokenType.BOLD:
+					nodes = nodes.concat(this.boldStmt());
+					break;
+				case TokenType.STRING:
+					nodes = nodes.concat(this.textStmt());
+			}
+		}
+		return nodes;
+	}
+
+	private innerBoldStmt(): Array<ASTNode> {
+		let nodes: Array<ASTNode> = [];
+		while (
+			this.currentToken.tokenType in [TokenType.ITALIC, TokenType.STRING]
+		) {
+      if (this.currentToken.tokenType === TokenType.BOLD){
+        break
+      }
+			switch (this.currentToken.tokenType) {
+				case TokenType.ITALIC:
+					nodes = nodes.concat(this.italicStmt());
+					break;
+				case TokenType.STRING:
+					nodes = nodes.concat(this.textStmt());
+			}
+		}
+		return nodes;
+	}
+
+	private monoSpaceStmt(): ASTNode {
+		const node: ASTNode = {
+			nodeType: NodeType.Monospace,
+			token: this.currentToken,
+			children: [],
+		};
+		this.eat(TokenType.MONOSPACE);
+		node.children = node.children.concat(this.textStmt());
+		this.eat(TokenType.MONOSPACE);
+		return node;
+	}
+
+	private codeStmt(): ASTNode {
+		const node: ASTNode = {
+			nodeType: NodeType.Code,
+			token: this.currentToken,
+			children: [],
+		};
+		this.eat(TokenType.CODE);
+		node.children = node.children.concat(this.textStmt());
+		this.eat(TokenType.CODE);
+		return node;
+	}
+
+	private formatStmt(): ASTNode {
+		let node: ASTNode = {
+			nodeType: NodeType.Void,
+			token: {
+				tokenType: TokenType.UNTYPED,
+				tokenValue: "",
+			},
+			children: [],
+		};
+		switch (this.currentToken.tokenType) {
+			case TokenType.STRING:
+				node = this.textStmt();
+				break;
+			case TokenType.MONOSPACE:
+				node = this.monoSpaceStmt();
+				break;
+			case TokenType.CODE:
+				node = this.codeStmt();
+				break;
+			case TokenType.ITALIC:
+				node = this.italicStmt();
+				break;
+			case TokenType.BOLD:
+				node = this.boldStmt();
+				break;
+		}
+		return node;
+	}
+
+	public rootStmt(): ASTNode {
+		const rootNode: ASTNode = {
+			nodeType: NodeType.RootNode,
+			token: {
+				tokenType: TokenType.UNTYPED,
+				tokenValue: "Root",
+			},
+			children: [],
+		};
+		switch (this.currentToken.tokenType) {
+			case TokenType.STRING:
+				rootNode.children = rootNode.children.concat(this.textStmt());
+				break;
+			case TokenType.MONOSPACE:
+				rootNode.children = rootNode.children.concat(this.monoSpaceStmt());
+				break;
+			case TokenType.CODE:
+				rootNode.children = rootNode.children.concat(this.codeStmt());
+				break;
+			case TokenType.ITALIC:
+				rootNode.children = rootNode.children.concat(this.italicStmt());
+				break;
+			case TokenType.BOLD:
+				rootNode.children = rootNode.children.concat(this.boldStmt());
+				break;
+		}
+		while (this.currentToken.tokenType !== TokenType.EOF) {
+			rootNode.children = rootNode.children.concat(this.formatStmt());
+		}
+		return rootNode;
+	}
+}
+
+const lexer = new Lexer("_Hello **World**_ `Code is fantastic`");
+//while (lexer.currentToken.tokenType !== TokenType.EOF) {
+//  console.log(lexer.getNextToken())
+//}
+const parser = new Parser(lexer);
+console.log(JSON.stringify(parser.rootStmt()));
