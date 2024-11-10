@@ -10,7 +10,7 @@ const lexer = new Lexer(
 	"_Hello **World**_ `Code is fantastic`\n### Hello World",
 );
 ```
-The lexer will turn the markdown source code into a series of token. Tokens are used as values the AST nodes.
+The lexer will turn the markdown source code into a series of token. Tokens are used as values for the AST nodes.
 The lexer takes the markdown source code as a parameter.
 ### Initialize a parser
 ```typescript
