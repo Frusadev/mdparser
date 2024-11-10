@@ -19,14 +19,15 @@ import { isAsciiAlpha, isAlphaNumeric } from "./utils.ts";
 
 enum TokenType {
   STRING,
+  NEWLINE,
   BOLD,
   ITALIC,
   UNORDEREDLI,
-  H1,
-  H2,
-  H3,
-  H4,
-  H5,
+  HEADER1,
+  HEADER2,
+  HEADER3,
+  HEADER4,
+  HEADER5,
   MONOSPACE,
   CODE,
   UNTYPED,
@@ -37,6 +38,12 @@ enum TokenType {
 type Token = {
   tokenValue: string;
   tokenType: TokenType;
+};
+
+type ASTNode = {
+  nodeType: NodeType;
+  token: Token;
+  children: Array<ASTNode>;
 };
 
 class Lexer {
@@ -61,12 +68,18 @@ class Lexer {
     return "";
   }
 
-  private peekSequence(end: number): string {
+  private peekSequence(size: number): string {
     let p = this.position;
     let s = "";
-    while (p <= end && this.input.length - 1 <= p) {
-      s += this.input[this.position + p];
-      p++;
+    const start = this.position
+    // currentChar + ... + char ar input[size]
+    // while position < position at end: (position + size)
+    while (p < start + size) {
+      if (this.position === this.input.length - 1){
+        break
+      }
+      s += this.input[p]
+      p++
     }
     return s;
   }
@@ -90,18 +103,37 @@ class Lexer {
       tokenType: TokenType.UNTYPED,
     };
 
-    for (let i = 5; i > 0; i--) {
-      const prefix = "#".repeat(i);
-      if (this.peekSequence(i) === prefix) {
-        token.tokenValue = prefix;
-        token.tokenType = TokenType[`H${i}` as keyof typeof TokenType];
-        this.advance(i);
-        return token;
-      }
+    if (this.peekSequence(5) === "#####") {
+      token.tokenType = TokenType.HEADER5;
+      token.tokenValue = "#####";
+      this.advance(5)
+      return token;
+    }
+
+    if (this.peekSequence(4) === "####") {
+      token.tokenType = TokenType.HEADER5;
+      token.tokenValue = "####";
+      this.advance(4)
+      return token;
+    }
+
+    if (this.peekSequence(3) === "###") {
+      token.tokenType = TokenType.HEADER4;
+      token.tokenValue = "###";
+      this.advance(3)
+      return token;
+    }
+
+    if (this.peekSequence(2) === "##") {
+      token.tokenType = TokenType.HEADER3;
+      token.tokenValue = "##";
+      this.advance(2)
+      return token;
     }
 
     token.tokenValue = "#";
-    token.tokenType = TokenType.H1;
+    token.tokenType = TokenType.HEADER1;
+    this.advance(1)
     return token;
   }
 
@@ -175,6 +207,11 @@ class Lexer {
       case "`":
         token = this.getCodeToken();
         break;
+      case "\n":
+        token.tokenValue = "\n";
+        token.tokenType = TokenType.NEWLINE;
+        this.advance();
+        break;
       default:
         token = this.getTextToken();
     }
@@ -185,6 +222,8 @@ class Lexer {
 
 enum NodeType {
   RootNode,
+  UnorderedList,
+  OrderedList,
   StringNode,
   Bold,
   Italic,
@@ -197,12 +236,6 @@ enum NodeType {
   Header5,
   Void,
 }
-
-type ASTNode = {
-  nodeType: NodeType;
-  token: Token;
-  children: Array<ASTNode>;
-};
 
 class Parser {
   private currentToken: Token;
@@ -231,7 +264,13 @@ class Parser {
       token: this.currentToken,
       children: [],
     };
-    this.eat(TokenType.STRING);
+    if (this.currentToken.tokenType === TokenType.STRING) {
+      this.eat(TokenType.STRING);
+    } else if (this.currentToken.tokenType === TokenType.NEWLINE) {
+      this.eat(TokenType.NEWLINE);
+    } else {
+      this.invalidTokenError();
+    }
     return text;
   }
 
@@ -261,7 +300,9 @@ class Parser {
 
   private innerItalicStmt(): Array<ASTNode> {
     let nodes: Array<ASTNode> = [];
-    while (this.currentToken.tokenType in [TokenType.BOLD, TokenType.STRING]) {
+    while (
+      [TokenType.BOLD, TokenType.STRING].includes(this.currentToken.tokenType)
+    ) {
       switch (this.currentToken.tokenType) {
         case TokenType.BOLD:
           nodes = nodes.concat(this.boldStmt());
@@ -276,11 +317,8 @@ class Parser {
   private innerBoldStmt(): Array<ASTNode> {
     let nodes: Array<ASTNode> = [];
     while (
-      this.currentToken.tokenType in [TokenType.ITALIC, TokenType.STRING]
+      [TokenType.ITALIC, TokenType.STRING].includes(this.currentToken.tokenType)
     ) {
-      if (this.currentToken.tokenType === TokenType.BOLD) {
-        break
-      }
       switch (this.currentToken.tokenType) {
         case TokenType.ITALIC:
           nodes = nodes.concat(this.italicStmt());
@@ -316,6 +354,30 @@ class Parser {
     return node;
   }
 
+  private headerStmt(): ASTNode {
+    const node: ASTNode = {
+      nodeType: NodeType.Void,
+      token: this.currentToken,
+      children: [],
+    };
+    const headers: Map<TokenType, NodeType> = new Map([
+      [TokenType.HEADER1, NodeType.Header1],
+      [TokenType.HEADER2, NodeType.Header2],
+      [TokenType.HEADER3, NodeType.Header3],
+      [TokenType.HEADER4, NodeType.Header4],
+      [TokenType.HEADER5, NodeType.Header5],
+    ]);
+    if (headers.get(node.token.tokenType) !== undefined) {
+      node.nodeType = headers.get(node.token.tokenType) as NodeType;
+      this.eat(this.currentToken.tokenType);
+    } else {
+      this.invalidTokenError();
+    }
+    node.children = node.children.concat(this.textStmt());
+    this
+    return node;
+  }
+
   private formatStmt(): ASTNode {
     let node: ASTNode = {
       nodeType: NodeType.Void,
@@ -341,6 +403,15 @@ class Parser {
       case TokenType.BOLD:
         node = this.boldStmt();
         break;
+      case TokenType.NEWLINE:
+        node = this.textStmt();
+        break;
+      default:
+        if (TokenType[this.currentToken.tokenType].startsWith("HEADER")) {
+          node = this.headerStmt();
+        } else {
+          this.invalidTokenError();
+        }
     }
     return node;
   }
@@ -354,23 +425,6 @@ class Parser {
       },
       children: [],
     };
-    switch (this.currentToken.tokenType) {
-      case TokenType.STRING:
-        rootNode.children = rootNode.children.concat(this.textStmt());
-        break;
-      case TokenType.MONOSPACE:
-        rootNode.children = rootNode.children.concat(this.monoSpaceStmt());
-        break;
-      case TokenType.CODE:
-        rootNode.children = rootNode.children.concat(this.codeStmt());
-        break;
-      case TokenType.ITALIC:
-        rootNode.children = rootNode.children.concat(this.italicStmt());
-        break;
-      case TokenType.BOLD:
-        rootNode.children = rootNode.children.concat(this.boldStmt());
-        break;
-    }
     while (this.currentToken.tokenType !== TokenType.EOF) {
       rootNode.children = rootNode.children.concat(this.formatStmt());
     }
@@ -378,9 +432,8 @@ class Parser {
   }
 }
 
-const lexer = new Lexer("_Hello **World**_ `Code is fantastic`");
-//while (lexer.currentToken.tokenType !== TokenType.EOF) {
-//  console.log(lexer.getNextToken())
-//}
+const lexer = new Lexer(
+  "_Hello **World**_ `Code is fantastic`\n### Hello World",
+);
 const parser = new Parser(lexer);
 console.log(JSON.stringify(parser.rootStmt()));
