@@ -209,4 +209,4 @@ const renderNode = (node: MarkdownNode): React.ReactNode => {
 };
 ```
 
-PS: File a pull request if you want to contribute to the core of the project or examples.
+PS: File a pull request if you want to contribute to the core of the project or to examples.
