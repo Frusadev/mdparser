@@ -1,11 +1,14 @@
 {
   "name": "smdparser",
-  "module": "parser.ts",
+  "module": "src/test.ts",
   "type": "module",
   "devDependencies": {
     "@types/bun": "latest"
   },
   "peerDependencies": {
     "typescript": "^5.0.0"
+  },
+  "scripts": {
+    "test": "bun run src/test.ts"
   }
 }
