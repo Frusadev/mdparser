@@ -29,12 +29,12 @@ export function toHtml(root: ASTNode, incSize = 0): string {
         output += `${inc}<br>\n`;
         break;
       case NodeType.SpaceNode:
-        output += `${inc}<span> </span>`;
+        output += `${inc}<pre> </pre>`;
         break;
       case NodeType.StringNode:
-        output += `${inc}<span>`;
+        output += `${inc}<pre>`;
         output += child.token.tokenValue;
-        output += `${inc}</span>\n`;
+        output += `${inc}</pre>\n`;
         break;
       case NodeType.Italic:
         output += `${inc}<i>`;
