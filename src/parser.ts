@@ -1,4 +1,5 @@
-import { Lexer, TokenType, Token } from "./lexer.ts";
+import { TokenType } from "./lexer.ts";
+import type { Token, Lexer } from "./lexer.ts";
 /**
  * GRAMMAR
  * formatStmt: text           |
@@ -15,6 +16,7 @@ import { Lexer, TokenType, Token } from "./lexer.ts";
  * innerItalicStmt: bold | text
  * code:   BACKTICK  formatStmt BACKTICK
  * multiline_code: BACKTICK BACKTICK BACKTICK text BACKTICK BACKTICK BACKTICK
+ *
  */
 
 export type ASTNode =
@@ -230,7 +232,6 @@ export class Parser {
       token: this.currentToken,
       children: [],
     };
-    this.eat(TokenType.UNORDEREDLI);
     this.eat(TokenType.SPACE);
     switch (this.currentToken.tokenType) {
       case TokenType.ITALIC:
@@ -248,6 +249,9 @@ export class Parser {
       default:
         listNode.children = listNode.children.concat(this.headerStmt());
     }
+    if (!(this.currentToken.tokenType === TokenType.EOF)) {
+      this.eat(TokenType.NEWLINE);
+    }
     return listNode;
   }
 
@@ -261,12 +265,14 @@ export class Parser {
       children: [],
     };
     while (this.currentToken.tokenType === TokenType.UNORDEREDLI) {
+      this.eat(TokenType.UNORDEREDLI);
       listRoot.children = listRoot.children.concat(
         this.innerUnorederedLiStmt(),
       );
     }
     return listRoot;
   }
+
   private formatStmt(): ASTNode {
     let node: ASTNode = {
       nodeType: NodeType.Void,
