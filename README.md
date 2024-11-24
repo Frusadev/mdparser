@@ -32,9 +32,9 @@ The `parser.rootStmt()` method is used to get the entire structure of the source
 ### Transpile the markdown source code into html
 
 ```typescript
-import { Lexer } from "./lexer.ts";
-import { Parser } from "./parser.ts";
-import { toHtml } from "./html.ts";
+import { Lexer } from ".src/lexer.ts";
+import { Parser } from ".src/parser.ts";
+import { toHtml } from ".src/html.ts";
 
 const data = `### Section
 - List n 1
@@ -48,5 +48,9 @@ const lexer = new Lexer(data);
 const parser = new Parser(lexer);
 console.log(toHtml(parser.rootStmt()));
 ```
+
+For testing only, run `npm run test`  
+
+`test.ts` is located at `src/test.ts`
 
 PS: File a pull request if you want to contribute to the core of the project or to examples.
